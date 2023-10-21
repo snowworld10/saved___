@@ -1,0 +1,2 @@
+INFO:__main__:connected, joining
+INFO:__main__:exception during joining ('no such table: entities',)

@@ -1,0 +1,1103 @@
+	# This is a sample Python script.
+
+# Press Shift+F10 to execute it or replace it with your code.
+# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+
+# TODO добавить payeer https://payeercom.docs.apiary.io/#reference/0/creating-an-invoice-for-payment
+import datetime
+import shutil
+import io
+import traceback
+import codecs
+from telebot import formatting
+import sys
+from decimal import Decimal
+from zipfile import ZipFile
+from threading import Thread
+import random
+import time
+import requests as r
+import telebot
+import os
+from telebot import types
+from pyCryptomusAPI import pyCryptomusAPI
+import settings as s
+import json
+from bs4 import BeautifulSoup
+
+bot = telebot.TeleBot(s.token)
+print(bot.get_me())
+client = pyCryptomusAPI(merchant_uuid=s.merchant_uuid, payment_api_key=s.payment_api)  # Merchand UUID
+
+back_adm_markup = telebot.types.InlineKeyboardMarkup()
+back_adm1 = types.InlineKeyboardButton(s.language["menu_button"], callback_data=s.language["admin_panel"])
+back_adm_markup.add(back_adm1)
+
+back_smm_markup = telebot.types.InlineKeyboardMarkup()
+backbtn_1 = types.InlineKeyboardButton(s.language["menu_button"], callback_data=s.language["smm_button"])
+back_smm_markup.add(backbtn_1)
+
+back_shop_markup = telebot.types.InlineKeyboardMarkup()
+backbtn_1 = types.InlineKeyboardButton(s.language["menu_button"], callback_data=s.language["shop_button"])
+back_shop_markup.add(backbtn_1)
+
+topup_markup = telebot.types.InlineKeyboardMarkup()
+topupbtn_1 = types.InlineKeyboardButton(s.language['menu_button'], callback_data=s.language['menu_button'])
+topup_markup.add(topupbtn_1)
+currency_markup = telebot.types.InlineKeyboardMarkup()
+currencybtn_1 = types.InlineKeyboardButton('🅱 Bitcoin', callback_data='cryptoselect BTC')
+currencybtn_2 = types.InlineKeyboardButton('💎 Litecoin', callback_data='cryptoselect LTC')
+currencybtn_3 = types.InlineKeyboardButton('USDT (TRC-20)', callback_data='cryptoselect USDT TRON')
+currencybtn_8 = types.InlineKeyboardButton('USDT (BEP-20)', callback_data='cryptoselect USDT BSC')
+currencybtn_4 = types.InlineKeyboardButton('BNB BEP-20', callback_data='cryptoselect BNB')
+currencybtn_5 = types.InlineKeyboardButton('BUSD BEP-20', callback_data='cryptoselect BUSD')
+currencybtn_6 = types.InlineKeyboardButton('TRX TRC-20', callback_data='cryptoselect TRX')
+currencybtn_7 = types.InlineKeyboardButton(s.language['menu_button'], callback_data=s.language['menu_button'])
+currency_markup.add(currencybtn_1, currencybtn_2, currencybtn_3, currencybtn_8, currencybtn_4, currencybtn_5, row_width=2)
+currency_markup.add(currencybtn_6, currencybtn_7, row_width=1)
+
+admin_markup = telebot.types.InlineKeyboardMarkup()
+adminbtn_1 = types.InlineKeyboardButton(s.language["give_b"], callback_data=s.language["give_b"])
+adminbtn_2 = types.InlineKeyboardButton(s.language["look_orders"], callback_data=s.language["look_orders"])
+adminbtn_3 = types.InlineKeyboardButton(s.language["get_payments"], callback_data=s.language["get_payments"])
+adminbtn_4 = types.InlineKeyboardButton(s.language["menu_button"], callback_data=s.language["menu_button"])
+admin_markup.add(adminbtn_1, adminbtn_2, adminbtn_3, adminbtn_4)
+
+back_markup = telebot.types.InlineKeyboardMarkup()
+back_btn = telebot.types.InlineKeyboardButton(s.language['back_to_directories'], callback_data=s.language['smm_button'])
+back_markup.add(back_btn)
+
+shop_markup = types.InlineKeyboardMarkup()
+shopbtn_1 = types.InlineKeyboardButton(s.language['back_to_shop'], callback_data=s.language['back_to_shop'])
+shop_markup.add(shopbtn_1)
+
+choose_type_of_orders_markup = types.InlineKeyboardMarkup(row_width=2)
+orders_button_1 = types.InlineKeyboardButton(s.language['shop_orders_button'], callback_data=s.language['shop_orders_button'])
+orders_button_2 = types.InlineKeyboardButton(s.language['smm_orders_button'], callback_data=s.language['smm_orders_button'])
+orders_button_3 = types.InlineKeyboardButton(s.language['menu_button'], callback_data=s.language['menu_button'])
+choose_type_of_orders_markup.add(orders_button_2, orders_button_3)
+
+enter_amount_markup = types.InlineKeyboardMarkup()
+cryptobtn_1 = types.InlineKeyboardButton(s.language['back_to_crypto'], callback_data=s.language['back_to_crypto'])
+enter_amount_markup.add(cryptobtn_1)
+
+currency_dict = {}
+topup_process_users = []
+buying_process_users_q = {}
+smm_buying_process = {}
+admin_regime = ''
+waiting_order = {}
+
+def get_balance(user_id):
+    with open('balance.json') as f:
+        balances_json = f.read()
+    balances_dict = json.loads(balances_json)
+    if str(user_id) in balances_dict.keys():
+        return str(balances_dict[str(user_id)])
+    else:
+        return None
+
+@bot.callback_query_handler(func=lambda c: 'page' in c.data)
+@bot.callback_query_handler(func=lambda c: c.data == s.language['shop_button'])
+@bot.callback_query_handler(func=lambda c: c.data == s.language['back_to_shop'])
+def shop(message):
+    if message.data == s.language['back_to_shop'] and message.from_user.id in buying_process_users_q.keys():
+        del buying_process_users_q[message.from_user.id]
+    if 'page' in message.message.text:
+        current_page = int(message.message.text.split(' ')[1])
+    else:
+        current_page = 1
+    shop_reply_markup = telebot.types.InlineKeyboardMarkup(row_width=5)
+    shopbtn_1 = types.InlineKeyboardButton(f'{s.language["page"]} {current_page + 1}', callback_data=f'page {current_page + 1}')
+    shopbtn_2 = types.InlineKeyboardButton(s.language['menu_button'], callback_data=s.language['menu_button'])
+    
+    if message.from_user.id in s.admin_user_id:
+        shopbtn_3 = types.InlineKeyboardButton("add account", callback_data="admin_add_acc")
+        shop_reply_markup.add(shopbtn_3)
+    if get_accounts(current_page + 1):
+        shop_reply_markup.add(shopbtn_1, shopbtn_2)
+    else:
+        shop_reply_markup.add(shopbtn_2)
+    page = 1
+    accounts = get_accounts(current_page)
+    for account in accounts.keys():
+        shopbtn = types.InlineKeyboardButton(f'{account} | {get_account(accounts[account][1])["price"]} USDT | {accounts[account][0]}个', callback_data=f'accountselect {accounts[account][1]}')
+        shop_reply_markup.add(shopbtn)
+    
+    bot.edit_message_text(s.language['shop_button'],message.message.chat.id, message.message.id, reply_markup=shop_reply_markup)
+
+@bot.callback_query_handler(func=lambda c: c.data == s.language["smm_button"])
+@bot.callback_query_handler(func=lambda c: 'smm_shop' in c.data)
+@bot.callback_query_handler(func=lambda c: 's_c' in c.data)
+def smm_shop(message):
+    global smm_buying_process
+    if message.from_user.id in smm_buying_process.keys():
+        del smm_buying_process[message.from_user.id]
+
+    smm_shop_markup = telebot.types.InlineKeyboardMarkup()
+
+    if message.data == s.language["smm_button"]:
+        menu_button = telebot.types.InlineKeyboardButton(s.language["menu_button"], callback_data=s.language["menu_button"])
+        networks_btn1 = telebot.types.InlineKeyboardButton("电报业务", callback_data="smm_shop telegram")
+        networks_btn2 = telebot.types.InlineKeyboardButton("IG业务", callback_data="smm_shop instagram")
+        networks_btn3 = telebot.types.InlineKeyboardButton("TikTok业务", callback_data="smm_shop tiktok")
+        networks_btn4 = telebot.types.InlineKeyboardButton("脸书业务", callback_data="smm_shop facebook")
+        networks_btn5 = telebot.types.InlineKeyboardButton("油管业务", callback_data="smm_shop youtube")    
+        networks_btn6 = telebot.types.InlineKeyboardButton("推特业务", callback_data="smm_shop twitter")
+        smm_shop_markup.add(networks_btn1, networks_btn2, networks_btn3, networks_btn4, networks_btn5, networks_btn6, menu_button)
+        bot.edit_message_text(s.language["smm_button"], message.message.chat.id, message.message.id, reply_markup=smm_shop_markup)
+        return
+   
+    if 's_c' in message.data:
+        network = message.data.split(" ")[1]
+        services_available = _get_services(network)        
+
+        menu_button = telebot.types.InlineKeyboardButton(text=s.language['back_to_directories'], callback_data="smm_shop " + network)
+             
+        counter = 0
+        found_c = ""
+        for catalogue in services_available.keys():
+            counter += 1
+            if counter == int(message.data.split("s_c ")[-1]):
+                found_c = catalogue
+
+        services_available = services_available[found_c]
+        for service in services_available:
+            smm_shop_button = telebot.types.InlineKeyboardButton(text=f'{service["name"]}', callback_data=f'network {network} smmselect {service["service"]}')
+            smm_shop_markup.add(smm_shop_button)
+     
+        smm_shop_markup.add(menu_button)
+        bot.edit_message_reply_markup(message.message.chat.id, message.message.id, reply_markup=smm_shop_markup)
+    else:
+        network = message.data.split("smm_shop ")[-1]
+        services_available = _get_services(network)
+        menu_button = telebot.types.InlineKeyboardButton(text=s.language['menu_button'], callback_data=s.language['smm_button'])
+        if message.from_user.id in s.admin_user_id:
+            admin_button = telebot.types.InlineKeyboardButton(text=s.language['admin_add_service_button'], callback_data='admin_add_service_button ' + message.data.split("smm_shop ")[-1])
+            smm_shop_markup.add(admin_button)
+        counter = 0
+        for catalogue in services_available.keys():
+            counter += 1
+            smm_shop_button = telebot.types.InlineKeyboardButton(text=catalogue, callback_data=f'smm_shop {network} s_c {counter}')
+            smm_shop_markup.add(smm_shop_button)
+        smm_shop_markup.add(menu_button)
+        bot.edit_message_text(s.language['smm_button'], message.message.chat.id, message.message.id, reply_markup=smm_shop_markup)
+
+@bot.callback_query_handler(func=lambda c: 'admin_add_service_button' in c.data)
+def admin_add_service(message):
+    global admin_regime
+    network = message.data.split("admin_add_service_button ")[-1]
+    admin_regime = f'add_smm_service {network}'
+
+    admin_bmk = telebot.types.InlineKeyboardMarkup()
+    bmk_1 = telebot.types.InlineKeyboardButton(s.language["menu_button"], callback_data=f"smm_shop {network}")
+    admin_bmk.add(bmk_1)
+
+    bot.edit_message_text(s.language['admin_smm_enter_data'], message.message.chat.id, message.message.id, reply_markup=admin_bmk)
+
+@bot.callback_query_handler(func=lambda c: 'smmselect' in c.data)
+def enter_link_and_quantity(message):
+    service = _get_service(message.data.split('smmselect ')[1])
+    network = message.data.split(" ")[1]
+    final_message = ""
+  
+    if service["description"] is None:
+        _remove_saved_smm(message.data.split('smmselect ')[1], network)
+        start_command(message)
+        return
+    else:
+        final_message += service["description"] + "\n\n\n" + s.language['enter_link_and_quality'][service['type']]    
+
+    smm_buying_process[message.from_user.id] = message.data.split('smmselect ')[1]
+
+    enter_smm_data_markup = telebot.types.InlineKeyboardMarkup()
+    back_btn = telebot.types.InlineKeyboardButton(s.language['back_to_directories'], callback_data="smm_shop " + network)
+    
+    if message.from_user.id in s.admin_user_id:
+        admin_btn = telebot.types.InlineKeyboardButton(s.language['remove_smm_service'], callback_data=f'smm_remove {service["service"]} {network}')
+        enter_smm_data_markup.add(admin_btn)
+    enter_smm_data_markup.add(back_btn)
+    bot.edit_message_text(final_message, message.message.chat.id, message.message.id, reply_markup=enter_smm_data_markup)
+
+@bot.callback_query_handler(func=lambda c: s.language['look_orders'] in c.data)
+def admin_look_orders(message):
+    global admin_regime
+    bot.edit_message_text(s.language["enter_id"], message.message.chat.id, message.message.id, reply_markup=back_adm_markup)
+    admin_regime = "gen_look_orders"
+
+@bot.callback_query_handler(func=lambda c: "smm_order" in c.data)
+def show_order_details(message):
+    id = message.data.split(" ")[1]
+    order = _get_order_status(id)
+    final_message = f"ID: {order['id']}\n日期: {order['created']}\n链接: {order['link']}\n费用: {order['charge']['formatted']}\n服务ID: {order['service_id']}\n数量: {order['quantity']}\n状态: {order['status']}\n剩余: {order['remains']}"
+    bo_markup = types.InlineKeyboardMarkup()
+    bo_btn1 = types.InlineKeyboardButton(s.language["menu_button"], callback_data=s.language["smm_orders_button"])
+
+@bot.callback_query_handler(func=lambda c: s.language['give_b'] in c.data)
+def admin_add_balance(message):
+    global admin_regime
+    admin_regime = "topup"
+    bot.edit_message_text(s.language["admin_topup"], message.message.chat.id, message.message.id, reply_markup=back_adm_markup)
+
+@bot.callback_query_handler(func=lambda c: 'smm_remove' in c.data)
+def admin_remove_service(message):
+    service_id = message.data.split(' ')[1]
+    network = message.data.split(' ')[2]
+    _remove_saved_smm(service_id, network)
+    
+    adm_bkm = telebot.types.InlineKeyboardMarkup()
+    bkm_1 = telebot.types.InlineKeyboardButton(s.language["menu_button"], callback_data="smm_shop " + network)
+    adm_bkm.add(bkm_1)
+
+    bot.edit_message_text(s.language['success_message'], message.message.chat.id, message.message.id, reply_markup=adm_bkm)
+
+def add_payment(order_id, user_id, amount):
+    with open('payments.json', 'r') as f:
+        payments_json = f.read()
+
+    payments_dict = json.loads(payments_json)
+    if str(user_id) in payments_dict.keys():
+        payments_dict[str(user_id)][str(order_id)] = {'state': 'New', 'amount': str(amount)}
+    else:
+        payments_dict[str(user_id)] = {str(order_id): {'state': 'New', 'amount': str(amount)}}
+
+    with open('payments.json', 'w') as f:
+        payments_json = json.dumps(payments_dict)
+        f.write(payments_json)
+
+def remove_payment(order_id, user_id):
+    with open('payments.json', 'r') as f:
+        payments_json = f.read()
+
+    payments_dict = json.loads(payments_json)
+    del payments_dict[str(user_id)][str(order_id)]
+
+    with open('payments.json', 'w') as f:
+        payments_json = json.dumps(payments_dict)
+        f.write(payments_json)
+
+@bot.callback_query_handler(func=lambda c: 'admin_d_acc' in c.data)
+def admin_d_acc(message):
+    global admin_regime
+    admin_regime = "d_acc"
+    buying_process_users_q[message.from_user.id] = message.data.split("admin_d_acc ")[-1]
+    bot.edit_message_text(s.language["enter_quantity"], message.message.chat.id, message.message.id, reply_markup=back_shop_markup)
+
+@bot.callback_query_handler(func=lambda c: c.data == s.language["get_payments"])
+def admin_get_payments(message):
+    global admin_regime
+    bot.edit_message_text(s.language["enter_id"], message.message.chat.id, message.message.id, reply_markup=back_adm_markup)
+    admin_regime = "get_payments"
+
+@bot.callback_query_handler(func=lambda c: 'admin_rem_acc' in c.data)
+def admin_rem_account(message):
+    if message.from_user.id not in s.admin_user_id:
+        return
+
+    shutil.rmtree(buying_process_users_q[message.from_user.id])
+    del buying_process_users_q[message.from_user.id]
+
+    bot.edit_message_text(s.language["success_message"], message.message.chat.id, message.message.id, reply_markup=back_shop_markup)
+
+@bot.callback_query_handler(func=lambda c: 'admin_add_acc' in c.data)
+def admin_add_accounts(message):
+    if message.from_user.id not in s.admin_user_id:
+        return
+
+    folder = str(random.randint(10000, 99999))
+    os.mkdir(f"/home/ubuntu/bot/accounts/{folder}")
+    info_dict = {"name": "unnamed", "price": "0", "id": folder}
+    with open(f"/home/ubuntu/bot/accounts/{folder}/info.json", "w") as f:
+        f.write(json.dumps(info_dict))
+    bot.edit_message_text(s.language["success_message"], message.message.chat.id, message.message.id, reply_markup=back_shop_markup)
+
+def update_payment(order_id, state, user_id):
+    with open('payments.json', 'r') as f:
+        payments_json = f.read()
+
+    payments_dict = json.loads(payments_json)
+    payments_dict[str(user_id)][str(order_id)]['state'] = state
+
+    with open('payments.json', 'w') as f:
+        payments_json = json.dumps(payments_dict)
+        f.write(payments_json)
+
+@bot.callback_query_handler(func=lambda c: c.data == s.language['shop_orders_button'])
+@bot.callback_query_handler(func=lambda c: c.data == s.language['smm_orders_button'])
+@bot.callback_query_handler(func=lambda c: c.data == s.language['general_orders_button'])
+def get_orders(message):
+    global admin_regime
+    getorders_markup = telebot.types.InlineKeyboardMarkup(row_width=1)
+    if message.from_user.id in s.admin_user_id and "gen_look_orders" in admin_regime:
+        bot.send_message(message.chat.id, s.language["general_orders_button"], reply_markup=choose_type_of_orders_markup)
+        admin_regime = f"look_orders {message.text}"
+        return
+
+    if message.from_user.id in s.admin_user_id and "look_orders" in admin_regime:
+        id = admin_regime.split(" ")[1]
+    else:
+        id = str(message.from_user.id)
+
+    if message.data == s.language['general_orders_button']:
+        bot.edit_message_text(s.language['general_orders_button'], message.message.chat.id, message.message.id,
+                                      reply_markup=choose_type_of_orders_markup)
+        return
+
+    elif message.data == s.language['smm_orders_button']:
+        final_message = s.language['smm_orders_button'] + '\n\n'
+        orders = _get_smm_orders(id)
+        counter = 0
+        for order_id in orders.keys():
+            getorders_btn = types.InlineKeyboardButton(order_id, callback_data=f"smm_order {order_id}")
+            getorders_markup.add(getorders_btn)
+            if counter == 10:
+                break
+            else:
+                counter += 1
+    
+    elif message.data == s.language['shop_orders_button']:
+        counter = 0
+        final_message = s.language['general_orders_button'] + '\n\n'
+        with open('orders.json', 'r') as f:
+            orders_json = f.read()
+
+        orders_dict = json.loads(orders_json)       
+        if id in orders_dict.keys():
+            for order in reversed(orders_dict[id]):
+                if counter < 10:
+                    final_message += f'{order["name"]} | {order["quantity"]}个 | {order["to_pay"]}$\n\n'
+                else:
+                    break
+                counter += 1
+
+    getorders_back_btn = telebot.types.InlineKeyboardButton(s.language["menu_button"], callback_data=s.language["general_orders_button"])
+    getorders_markup.add(getorders_back_btn)
+
+    bot.edit_message_text(final_message, message.message.chat.id, message.message.id, reply_markup=getorders_markup)
+    
+@bot.message_handler(commands=['stats'])
+def show_stats(message):
+    if message.from_user.id not in s.admin_user_id:
+        return
+
+    with open('stats.json') as f:
+        stats_json = f.read()
+    stats_dict = json.loads(stats_json)
+
+    final_message = s.language['statistics'] + '\n\n'
+    for day in stats_dict.keys():
+        final_message += f'{day}\n'
+        final_message += f'{s.language["statistics_recharge_amount"]} {stats_dict[day]["recharged"]}\n'
+        final_message += f'{s.language["statistics_new_people"]} {stats_dict[day]["new_people"]}\n'
+        final_message += f'{s.language["statistics_orders"]} {stats_dict[day]["orders"]}\n\n'
+
+    bot.send_message(message.from_user.id, final_message, reply_markup=topup_markup)
+
+@bot.callback_query_handler(func=lambda c: c.data == s.language['payments_button'])
+def get_payments(message=None, user_id=None, get_last=False):
+    counter = 0
+    final_message = s.language['payments_button'] + '\n\n'
+    with open('payments.json', 'r') as f:
+        payments_json = f.read()
+
+    payments_dict = json.loads(payments_json)
+    if get_last:
+        return payments_dict[str(user_id)]
+
+    if message.from_user.id in s.admin_user_id and admin_regime == "get_payments":
+        id = str(message.text)
+    else:
+        id = str(message.from_user.id)
+
+    if id not in payments_dict.keys():
+        payments_dict[id] = {}
+        with open('payments.json', 'w') as f:
+            f.write(json.dumps(payments_dict))
+
+    payments_dict = dict(reversed(payments_dict[id].items()))
+    for order_id in payments_dict.keys():
+        if counter < 10:
+            value = payments_dict[order_id]
+            final_message += f'#{order_id} | {value["amount"]} USDT | {value["state"]}\n\n'
+        else:
+            break
+        counter += 1
+
+    if message.from_user.id in s.admin_user_id and admin_regime == "get_payments":
+        bot.send_message(message.chat.id, final_message, reply_markup=back_adm_markup)
+    else:
+        bot.edit_message_text(final_message, message.message.chat.id, message.message.id, reply_markup=topup_markup)
+
+def add_order(user_id, accounts_name, quantity, to_pay):
+    with open('orders.json', 'r') as f:
+        orders_json = f.read()
+
+    orders_dict = json.loads(orders_json)
+    if str(user_id) not in orders_dict.keys():
+        orders_dict[str(user_id)] = []
+        
+    orders_dict[str(user_id)].append({'name': accounts_name, 'quantity': str(quantity), 'to_pay': str(to_pay)})
+    
+    with open('orders.json', 'w') as f:
+        orders_json = json.dumps(orders_dict)
+        f.write(orders_json)
+
+def get_accounts(page=None):
+    account_types = {}
+    max_index = page * 10
+    min_index = max_index - 9
+    index = 0
+
+    for folder in os.listdir('accounts'):
+        index += 1
+        print(folder, index, index <= max_index and index >= min_index, max_index, min_index)
+        if (index <= max_index and index >= min_index) or page is None:
+            print('adding account')
+            with open(f'/home/ubuntu/bot/accounts/{folder}/info.json', 'rb') as f:
+                info_json = codecs.decode(f.read(), 'utf-8-sig', errors='ignore')
+            print("opened")
+            info_dict = json.loads(info_json)
+            print("json loaded")
+            print(info_dict['name'])
+            account_types[info_dict['name']] = [len(os.listdir(f'/home/ubuntu/bot/accounts/{folder}')) - 1, info_dict['id']]
+            print("added")
+    print(account_types)
+    return account_types
+
+def get_account(id):
+    for folder in os.listdir('accounts'):
+        with open(f'/home/ubuntu/bot/accounts/{folder}/info.json', 'rb') as f:
+            info_json = codecs.decode(f.read(), 'utf-8-sig', errors='ignore')
+        info_dict = json.loads(info_json)
+        if info_dict['id'] == str(id):
+            info_dict['quantity'] = len(os.listdir(f'/home/ubuntu/bot/accounts/{folder}')) - 1
+            info_dict['folder'] = f'/home/ubuntu/bot/accounts/{folder}'
+            return info_dict
+
+@bot.callback_query_handler(func=lambda c: c.data == s.language['support_button'])
+def bot_info(message):
+    bot.edit_message_text(s.language['support'], message.message.chat.id, message.message.id, reply_markup=topup_markup)
+
+# @bot.message_handler(regexp='upload_existing')
+# def upload_existing_accounts(message):
+#     if message.from_user.username != s.admin_username:
+#         return
+#     global admin_regime
+#     admin_regime = f'upload_existing_accounts {message.text.split("upload_existing ")[1]}'
+#     bot.send_message(message.chat.id, '发送帐户文件')
+
+# @bot.message_handler(content_types=['document'])
+# def admin_upload_accounts(message):
+#     if message.from_user.username != s.admin_username:
+#         return
+#     global admin_regime
+#     if admin_regime == 'upload_accounts':
+#         folder_name = str(random.randint(10000, 99999))
+#         file_info = bot.get_file(message.document.file_id)
+#        downloaded_file = bot.download_file(file_info.file_path)
+#         with open(f'{folder_name}.zip', 'wb') as new_file:
+#             new_file.write(downloaded_file)
+#        with ZipFile(f'{folder_name}.zip', 'r') as zip_ref:
+#             os.mkdir(f'accounts\{folder_name}')
+#             zip_ref.extractall(f'accounts\{folder_name}')
+#         admin_regime = f'upload_info_json {folder_name}'
+#         bot.send_message(message.chat.id, '发送文件 info.json')
+#     elif 'upload_existing_accounts' in admin_regime:
+#         accounts_name = admin_regime.split('upload_existing_accounts ')[1]
+#         folder_name = get_account(accounts_name)['folder']
+#         file_info = bot.get_file(message.document.file_id)
+#         downloaded_file = bot.download_file(file_info.file_path)
+#         with open(message.document.file_name, 'wb') as new_file:
+#             new_file.write(downloaded_file)
+#         with ZipFile(message.document.file_name, 'r') as zip_ref:
+#             zip_ref.extractall(folder_name)
+#         admin_regime = 'upload_accounts'
+#        bot.send_message(message.chat.id, '成功地')
+#     elif 'upload_info_json' in admin_regime:
+#        folder_name = admin_regime.split(' ')[1]
+#         file_info = bot.get_file(message.document.file_id)
+#         downloaded_file = bot.download_file(file_info.file_path)
+#         with open(f'accounts\{folder_name}\info.json', 'wb') as new_file:
+#             new_file.write(downloaded_file)
+#         bot.send_message(message.chat.id, '成功地')
+#         admin_regime = 'upload_accounts'
+
+@bot.callback_query_handler(func=lambda c: c.data == s.language['menu_button'])
+def inline_menu_pressed(callback_query):
+    start_command(callback_query, inline=True, only_markup=False)
+
+@bot.callback_query_handler(func=lambda c: c.data == s.language['admin_panel'])
+def admin_command(message):
+    if message.from_user.id not in s.admin_user_id:
+        return
+    
+    bot.edit_message_text(s.language["admin_panel"], message.message.chat.id, message.message.id, reply_markup=admin_markup)
+
+@bot.message_handler(commands=['start'])
+def start_command(message, inline=False, only_markup=True):
+    global smm_buying_process
+    global admin_regime
+    if message.from_user.id in smm_buying_process.keys():
+        del smm_buying_process[message.from_user.id]
+    try:
+        general_markup = telebot.types.InlineKeyboardMarkup(row_width=2)
+        generalbtn_1 = types.InlineKeyboardButton(s.language['menu_button'], callback_data=s.language['menu_button'])
+        generalbtn_2 = types.InlineKeyboardButton(s.language['payments_button'],
+                                              callback_data=s.language['payments_button'])
+        generalbtn_3 = types.InlineKeyboardButton(s.language['general_orders_button'], callback_data=s.language['general_orders_button'])
+        generalbtn_4 = types.InlineKeyboardButton(s.language['shop_button'], callback_data=s.language['shop_button'])
+        if not get_balance(message.from_user.id):
+            _add_stats(new_people=True)
+            with open('balance.json', 'r') as f:
+                balances_json = f.read()
+
+            balances_dict = json.loads(balances_json)
+            balances_dict[str(message.from_user.id)] = 0
+
+            with open('balance.json', 'w') as f:
+                balances_json = json.dumps(balances_dict)
+                f.write(balances_json)
+        with open('orders.json') as f:
+            orders_json = f.read()
+        orders_dict = json.loads(orders_json)
+        if str(message.from_user.id) not in orders_dict.keys():
+            orders_dict[str(message.from_user.id)] = []
+        with open('orders.json','w') as f:
+            orders_json = json.dumps(orders_dict)
+            f.write(orders_json)
+
+        if message.from_user.id in topup_process_users:
+            topup_process_users.remove(message.from_user.id)
+        if message.from_user.id in buying_process_users_q.keys():
+            del buying_process_users_q[message.from_user.id]
+
+        generalbtn_5 = types.InlineKeyboardButton(f'{s.language["balance"]} {get_balance(message.from_user.id)}$', callback_data=s.language["balance"])
+        generalbtn_6 = types.InlineKeyboardButton(s.language['support_button'], callback_data=s.language['support_button'])
+        generalbtn_7 = types.InlineKeyboardButton(s.language['smm_button'], callback_data=s.language['smm_button'])
+        general_markup.add(generalbtn_5, generalbtn_7, generalbtn_3, generalbtn_2, generalbtn_6, generalbtn_1)
+
+        if message.from_user.id in s.admin_user_id:
+            admin_regime = ""
+            generalbtn_8 = types.InlineKeyboardButton(s.language['admin_panel'], callback_data=s.language["admin_panel"])
+            general_markup.add(generalbtn_8)
+
+        if inline:
+            if not only_markup:
+                bot.edit_message_text(f'{s.language["welcome_message_1"]}{message.from_user.first_name}'
+                                       f'{s.language["welcome_message_2"]}\n\n{s.language["your_balance_is"]} {get_balance(message.from_user.id)}$', message.message.chat.id, message.message.id)
+            bot.edit_message_reply_markup(message.message.chat.id, message.message.id, reply_markup=general_markup)
+        else:
+            bot.send_message(message.from_user.id, f'{s.language["welcome_message_1"]}{message.from_user.first_name}'
+                                       f'{s.language["welcome_message_2"]}\n\n{s.language["your_balance_is"]} {get_balance(message.from_user.id)}$', reply_markup=general_markup)
+    except Exception as exception:
+        print(exception.args)
+
+@bot.callback_query_handler(func=lambda c: 'cryptoselect' in c.data)
+def topup_balance(message):
+    bot.edit_message_text(s.language["enter_am_usd"], message.message.chat.id, message.message.id, reply_markup=enter_amount_markup)
+    currency_dict[message.from_user.id] = message.data.split('cryptoselect ')[1]
+    if message.from_user.id not in topup_process_users:
+        topup_process_users.append(message.from_user.id)
+
+def topup_process(message):
+    global currency_dict
+    if message.from_user.id not in topup_process_users:
+        return
+    order_id = random.randint(10000, 99999)
+    add_payment(order_id=order_id, user_id=message.from_user.id, amount=message.text)
+    currency = currency_dict[message.from_user.id]
+    amount = message.text
+    amount = Decimal(amount).quantize(Decimal("2.0"))
+    topup_process_users.remove(message.from_user.id)
+    if amount < Decimal("0.5"):
+        bot.send_message(message.chat.id,s.language["min_topup_err"])
+        start_command(message)
+        return
+
+    network = ''
+    if 'USDT' in currency:
+        network = currency.split(' ')[1]
+        currency = currency.split(' ')[0]
+        charge = client.create_invoice(amount=amount, currency='USD', order_id=order_id, to_currency=currency, network=network)
+    elif currency == 'BUSD':
+        charge = client.create_invoice(amount=amount, currency='USD', order_id=order_id, to_currency=currency,
+                                       network='BSC')
+      #  markup = types.InlineKeyboardMarkup()
+      #  button2 = types.InlineKeyboardButton(s.language['menu_button'], callback_data=s.language['menu_button'])
+      #  button1 = types.InlineKeyboardButton(s.language['pay_button'], url=charge.url)
+      #  markup.add(button1, button2)
+      #  bot.edit_message_text(f'{s.language["payment_link_created"]}', message.message.chat.id, message.message.id,  reply_markup=markup)
+    else:
+        charge = client.create_invoice(amount=amount, currency='USD', order_id=order_id, to_currency=currency)
+    bot.send_message(message.chat.id, f'{s.language["payment_wallet_generated"]}\n\nWallet: `{charge.address}`\n\n{charge.payer_amount} {currency}\n\n'
+                                      f'若要为您的账户充值{amount} USD，请将{charge.payer_amount} {currency} {network}转账至指定的钱包地址。', reply_markup=topup_markup, parse_mode='MARKDOWN')
+    thread = Thread(target=_topup_process, args=(charge, order_id, message.from_user.id))
+    thread.start()
+    thread.start()
+
+def _add_stats(new_people=None, recharged=None, orders=None):
+    with open('stats.json') as f:
+        stats_json = f.read()
+    stats_dict = json.loads(stats_json)
+
+    today = str(datetime.date.today())
+    if today not in stats_dict.keys():
+        stats_dict[today] = {}
+        stats_dict[today] = {"new_people": "0", "recharged": "0", "orders": "0"}
+
+    if new_people:
+        stats_dict[today]["new_people"] = str(int(stats_dict[today]["new_people"]) + 1)
+    if recharged:
+        stats_dict[today]["recharged"] = str(int(stats_dict[today]["recharged"]) + int(recharged))
+    if orders:
+        stats_dict[today]["orders"] = str(int(stats_dict[today]["orders"]) + 1)
+
+    with open('stats.json','w') as f:
+        stats_json = json.dumps(stats_dict)
+        f.write(stats_json)
+
+def _make_payment(user_id: str, amount: int):
+    with open('balance.json', 'r') as f:
+        balances_json = f.read()
+
+    balances_dict = json.loads(balances_json)
+    if int(user_id) not in s.admin_user_id:
+        if Decimal(balances_dict[user_id]) >= Decimal(amount):
+            print(Decimal(amount), amount)
+            new_balance = Decimal(balances_dict[user_id]) - Decimal(amount)
+            new_balance = str(new_balance)
+            balances_dict[user_id] = new_balance
+        else:
+            return False
+
+    with open('balance.json', 'w') as f:
+        balances_json = json.dumps(balances_dict)
+        f.write(balances_json)
+    return True
+
+def _remove_saved_smm(id: str, network):
+    service = _get_service(id)
+    category = service['category']
+    with open('saved_smm.json') as f:
+        saved_smm_json = f.read()
+    saved_smm_dict = json.loads(saved_smm_json)
+    
+    for service_dict in saved_smm_dict[category]:
+       if service_dict["service"] == id:
+           index = saved_smm_dict[category].index(service_dict)
+           del saved_smm_dict[category][index]
+           break
+    if not saved_smm_dict[category]:
+        del saved_smm_dict[category]
+        
+    with open('saved_smm.json', 'w') as f:
+        saved_smm_json = json.dumps(saved_smm_dict)
+        f.write(saved_smm_json)
+
+    with open("networks.json") as f:
+        networks_dict = json.loads(f.read())
+    try:
+        networks_dict[network].remove(id)
+    except Exception as exc:
+        pass
+
+    with open("networks.json", "w") as f:
+        f.write(json.dumps(networks_dict))
+def _add_smm_order(user_id: str, id: str, data):
+    _add_stats(orders=True) 
+    if data["min"] != None:
+        res = r.get(f'https://db-laren.com/api/v2?key={s.smm_panel_api_token}&action=add&service={id}&username={data["username"]}&min={data["min"]}&max={data["max"]}&delay={data["delay"]}')
+    elif data["answer_number"] != None:
+        res = r.get(f'https://db-laren.com/api/v2?key={s.smm_panel_api_token}&action=add&service={id}&link={data["link"]}&quantity={data["quantity"]}&answer_number={data["answer_number"]}')
+    elif data["comments"]:
+        groups = "\n".join(data["comments"].split(","))
+        res = r.get(f'https://db-laren.com/api/v2?key={s.smm_panel_api_token}&action=add&service={id}&link={data["link"]}&quantity={data["quantity"]}&groups={groups}')
+    elif "cust_comments" in data.keys():
+        print(data["cust_comments"])
+        cust_comm = "\n".join(data["cust_comments"].split(","))
+        res = r.get(f'https://db-laren.com/api/v2?key={s.smm_panel_api_token}&action=add&service={id}&link={data["link"]}&comments={cust_comm}')
+    else:
+        res = r.get(f'https://db-laren.com/api/v2?key={s.smm_panel_api_token}&action=add&service={id}&link={data["link"]}&quantity={data["quantity"]}')
+    res = res.json()
+    print(res)
+    
+    amount = str(data["amount"])
+    name = data['name']
+
+    with open('smm_orders.json') as f:
+        smm_orders_json = f.read()
+    smm_orders_dict = json.loads(smm_orders_json)
+    if user_id not in smm_orders_dict.keys():
+        smm_orders_dict[user_id] = {}
+    smm_orders_dict[user_id][res["order"]] = {"amount": amount, "name": name}
+    with open('smm_orders.json', 'w') as f:
+        smm_orders_json = json.dumps(smm_orders_dict)
+        f.write(smm_orders_json)
+    return res["order"]
+
+def _get_smm_orders(user_id: str):
+    with open('smm_orders.json') as f:
+        smm_orders_json = f.read()
+    smm_orders_dict = json.loads(smm_orders_json)
+    
+    if user_id in smm_orders_dict.keys():
+        smm_orders_dict = smm_orders_dict[user_id]
+        return dict(reversed(smm_orders_dict.items()))
+    else:
+        return {}
+
+def _get_order_status(id: str):
+    res = r.get(f'https://db-laren.com/adminapi/v2/orders/{id}?apikey={s.smm_panel_api_token}')
+    print(res.json())
+    return res.json()["data"]
+
+def _get_services(network):
+    with open('saved_smm.json') as f:
+        saved_services_json = f.read()
+    saved_services_dict = json.loads(saved_services_json)
+    
+    with open('networks.json') as f:
+        networks_dict = json.loads(f.read())
+    
+    output_dict = {}
+
+    for catalogue, services in saved_services_dict.items():
+        for service in services:
+            if service["service"] in networks_dict[network]:
+                if catalogue in output_dict.keys():
+                    output_dict[catalogue].append(service)
+                else:
+                    output_dict[catalogue] = [service] 
+    return output_dict
+
+def _add_service(id: str, network):
+    try:
+        int(id)
+    except ValueError:
+        return 
+    with open('saved_smm.json') as f:
+        saved_services_json = f.read()
+    saved_services_dict = json.loads(saved_services_json)
+    res = r.get(f'https://db-laren.com/api/v2?key={s.smm_panel_api_token}&action=services')
+    res = res.json()
+    for dict_with_service in res:
+        if dict_with_service['service'] == id:
+            if dict_with_service["category"] not in saved_services_dict.keys():
+                saved_services_dict[dict_with_service["category"]] = []
+            saved_services_dict[dict_with_service["category"]].append(dict_with_service)
+    with open('saved_smm.json', 'w') as f:
+        saved_services_json = json.dumps(saved_services_dict)
+        f.write(saved_services_json)
+    
+    with open("networks.json") as f:
+        networks_dict = json.loads(f.read())
+    networks_dict[network].append(id)
+
+    with open("networks.json", "w") as f:
+        f.write(json.dumps(networks_dict))
+
+def _add_balance(user_id, amount):
+    _add_stats(recharged=amount)
+    with open('balance.json', 'r') as f:
+        balances_json = f.read()
+
+    balances_dict = json.loads(balances_json)
+    balances_dict[str(user_id)] = str(Decimal(balances_dict[str(user_id)]) + amount)
+
+    with open('balance.json', 'w') as f:
+        balances_json = json.dumps(balances_dict)
+        f.write(balances_json)
+
+def _topup_process(charge, order_id, user_id):
+    for _ in range(60):
+        res = client.payment_information(charge.uuid)
+        print(res.status)
+        if res.status == 'confirm_check':
+            update_payment(order_id, 'Pending', user_id)
+            for _ in range(180):
+                res = client.payment_information(charge.uuid)
+                print(res.status)
+                if 'paid' in res.status:
+                    update_payment(order_id, 'Completed', user_id)
+                    bot.send_message(user_id, f'{s.language["success_message"]} {charge.amount} {charge.payer_currency}')
+                    _add_balance(user_id, amount)
+                    return
+                time.sleep(60)
+            update_payment(order_id, 'Unresolved', user_id)
+            return
+        time.sleep(60)
+    remove_payment(order_id)
+    return
+
+@bot.callback_query_handler(func=lambda c: 'accountselect' in c.data)
+def enter_quantity(message):
+    account = get_account(message.data.split('accountselect ')[1])
+    if message.from_user.id in s.admin_user_id:
+        print(True)
+        admin_reply_markup = telebot.types.InlineKeyboardMarkup()
+        folder = account['folder']
+        buying_process_users_q[message.from_user.id] = folder
+        admin_button_1 = telebot.types.InlineKeyboardButton(s.language['edit_name'], callback_data=f'edit_name')
+        admin_button_2 = telebot.types.InlineKeyboardButton(s.language['edit_price'], callback_data=f'edit_price')
+        admin_button_3 = telebot.types.InlineKeyboardButton(s.language["remove_acc"], callback_data="admin_rem_acc")
+        admin_button_4 = telebot.types.InlineKeyboardButton(s.language["download_acc"], callback_data=f"admin_d_acc {message.data.split('accountselect ')[1]}")
+        admin_button_5 = telebot.types.InlineKeyboardButton(s.language['back_to_shop'], callback_data=s.language["shop_button"])
+        admin_reply_markup.add(admin_button_1, admin_button_2, admin_button_3, admin_button_4, admin_button_5)
+        bot.edit_message_text(folder + "\n\n发送包含帐户的 zip 存档", message.message.chat.id, message.message.id, reply_markup=admin_reply_markup)
+        print(True)
+        return
+    buying_process_users_q[message.from_user.id] = message.data.split('accountselect ')[1]
+    final_message = f'{s.language["show_accounts_nickname"]} {account["name"]}\n\n{s.language["show_price"]} {account["price"]} USDT\n\n' \
+                    f'{s.language["show_accounts_in_stock"]} {account["quantity"]}\n\n{s.language["warning_while_buying"]}'
+    bot.edit_message_text(final_message ,message.message.chat.id, message.message.id, reply_markup=shop_markup, parse_mode='Markdown')
+
+@bot.callback_query_handler(func=lambda c: 'edit_price' in c.data)
+def enter_new_price(message):
+    global admin_regime
+    bot.edit_message_text(s.language['enter_new_price'], message.message.chat.id, message.message.id, reply_markup=back_shop_markup)
+    admin_regime = 'edit_price'
+
+@bot.callback_query_handler(func=lambda c: c.data == 'edit_name')
+def enter_new_name(message):
+    global admin_regime
+    bot.edit_message_text(s.language['enter_new_name'], message.message.chat.id, message.message.id, reply_markup=back_shop_markup)
+    admin_regime = 'edit_name'
+
+@bot.message_handler(content_types=['document'])
+def upload_accounts(message):
+    if message.from_user.id not in s.admin_user_id:
+        return
+    folder = buying_process_users_q[message.from_user.id]
+    file_name = message.document.file_name
+    file_info = bot.get_file(message.document.file_id)
+    downloaded_file = bot.download_file(file_info.file_path)
+    with open(file_name, 'wb') as new_file:
+        new_file.write(downloaded_file)
+    with ZipFile(file_name, 'r') as zip_ref:
+        zip_ref.extractall(folder)
+    del buying_process_users_q[message.from_user.id]
+    bot.send_message(message.chat.id, s.language['success_message'], reply_markup=back_shop_markup)
+
+@bot.message_handler(regexp='')
+def got_message(message):
+    global admin_regime
+    if message.from_user.id in s.admin_user_id and (admin_regime == "edit_price" or admin_regime == "edit_name"):
+        update_account_info(new_info=message.text, folder=buying_process_users_q[message.from_user.id])
+        del buying_process_users_q[message.from_user.id]
+        bot.send_message(message.chat.id, s.language['success_message'], reply_markup=back_shop_markup)
+        return
+    if message.from_user.id in topup_process_users:
+        topup_process(message)
+        return
+    elif message.from_user.id in s.admin_user_id and admin_regime == 'topup':
+        id = message.text.split(" ")[0]
+        amount = Decimal(message.text.split(" ")[1])
+       
+        _add_balance(id, amount)
+        bot.send_message(message.chat.id, s.language["success_message"], reply_markup=back_adm_markup)
+
+    elif message.from_user.id in s.admin_user_id and 'add_smm_service' in admin_regime:
+        _add_service(message.text, admin_regime.split(" ")[-1])
+
+        admin_bkm = telebot.types.InlineKeyboardMarkup()
+        bkm_1 = telebot.types.InlineKeyboardButton(s.language["menu_button"], callback_data="smm_shop " + admin_regime.split(" ")[-1])
+        admin_bkm.add(bkm_1)
+        admin_regime = ''
+        bot.send_message(message.from_user.id, s.language['success_message'], reply_markup=admin_bkm)
+        return 
+    elif message.from_user.id in s.admin_user_id and admin_regime == "get_payments":
+        get_payments(message)
+        return
+    elif message.from_user.id in s.admin_user_id and "look_orders" in admin_regime:
+        get_orders(message)
+        return
+    elif message.from_user.id in s.admin_user_id and admin_regime == "d_acc":
+        admin_regime = ''
+        _send_accounts(buying_process_users_q[message.from_user.id], int(message.text), message.chat.id, True)
+        del buying_process_users_q[message.from_user.id]
+        bot.send_message(message.from_user.id, s.language['success_message'], reply_markup=back_shop_markup)
+        return
+    elif message.from_user.id not in buying_process_users_q.keys():
+        if len(message.text.split(' ')) >= 2:
+            confirmation_process(message, smm=True)
+        return
+    else:
+        confirmation_process(message, smm=False)
+
+def confirmation_process(message, smm):
+        global waiting_order
+        final_message = '阅读条款和条件并确认购买\n\n'
+        data = {"link": None,"quantity": None, "answer_number": None, "username": None, "min": None, "max": None, "delay": None, "service_id": None, "smm": smm, "comments": "", "user_id": message.from_user.id}
+        if smm:
+            service_id = smm_buying_process[message.from_user.id]
+            service = _get_service(service_id)
+            data["service_id"] = service_id
+            type = service["type"]
+            if type == 'Poll':
+                data["link"] = message.text.split(' ')[0]
+                data["answer_number"] = message.text.split(' ')[2]
+                data["quantity"] = message.text.split(' ')[1]
+            elif type == 'Default':
+                data["link"] = message.text.split(' ')[0]
+                data["quantity"] = message.text.split(' ')[1]
+            elif type == 'Subscriptions':
+                data["username"] = message.text.split(' ')[0]
+                data["min"] = message.text.split(' ')[1]
+                data["max"] = message.text.split(' ')[2]
+                data["delay"] = message.text.split(' ')[3]
+            elif type == "Invites from Groups":
+                data["link"] = message.text.split(" ")[0]
+                data["quantity"] = message.text.split(" ")[1]
+                data["comments"] = message.text.split(" ")[2]
+            elif type == "Custom Comments":
+                data["link"] = message.text.split(" ")[0]
+                data["cust_comments"] = message.text.split(" ")[1]
+                data["quantity"] = len(data["cust_comments"].split(","))
+
+            rate = Decimal(service["rate"]) / Decimal("6.7")
+            rate = Decimal(rate) / 1000
+            data["rate"] = rate
+            if data["quantity"] != None:
+                amount = Decimal(rate) * Decimal(data["quantity"])
+            else:
+                amount = Decimal(rate) * Decimal(data["max"])
+            data["amount"] = round(amount, 2)
+            data["name"] = _get_service(service_id)["name"]
+
+            final_message += f'金额 (1000) :  {round(Decimal(service["rate"]) / Decimal("6.7"),2)} USDT\n\n'
+            if type == 'Subscriptions':
+                final_message += f'链接 : {data["username"]}\n\n'
+            else:
+                final_message += f'链接 : {data["link"]}\n\n'
+            menu_btn = types.InlineKeyboardButton(s.language['back_to_shop'], callback_data=s.language["smm_button"])
+        else:
+            data["id"] = buying_process_users_q[message.from_user.id]
+            data["quantity"] = Decimal(message.text)
+            data["name"] = get_account(data['id'])["name"]
+            if get_account(data["id"])['quantity'] < data["quantity"]:
+                bot.send_message(message.chat.id,s.language["amount_error"], reply_markup=back_shop_markup)
+                return
+            del buying_process_users_q[message.from_user.id]
+            data["rate"] = Decimal(get_account(data["id"])['price'])
+            amount = Decimal(data["rate"]) * Decimal(data["quantity"])
+            data["amount"] = amount.quantize(Decimal("2.00"))
+            final_message += f'金 额:  {data["rate"]} USDT\n\n'
+            menu_btn = types.InlineKeyboardButton(s.language['back_to_shop'], callback_data=s.language["shop_button"])
+            
+        final_message += f'📝 {data["name"]}\n\n价格 :  {data["amount"]} USDT\n\n余额 :  {get_balance(message.from_user.id)}'
+        confirmation_markup = types.InlineKeyboardMarkup()
+        order_id = random.randint(10000, 99999)
+        confirmation_btn = types.InlineKeyboardButton(s.language['confirm_button'], callback_data=f'order {order_id}')
+        confirmation_markup.add(confirmation_btn, menu_btn)
+        data["order_id"] = order_id
+        waiting_order[order_id] = data
+
+        bot.send_message(message.chat.id, final_message, reply_markup=confirmation_markup)
+
+@bot.callback_query_handler(func=lambda c: 'order' in c.data)
+def buying_process(message):
+    global waiting_order
+    order_id = message.data.split('order ')[1]
+    order_id = int(order_id)
+    order_data = waiting_order[order_id]
+    name = order_data["name"]
+    quantity = order_data["quantity"]
+    rate = Decimal(order_data["rate"])
+
+    if order_data["smm"]:
+        service_id = order_data["service_id"]
+        amount = order_data["amount"]
+        print(amount)
+
+        if _make_payment(str(message.from_user.id), amount):
+            _add_smm_order(str(message.from_user.id), service_id, order_data)
+            bot.edit_message_text(s.language['success_message'], message.message.chat.id, message.message.id, reply_markup=back_smm_markup)
+        else:
+            bot.edit_message_text(s.language['money_error'], message.message.chat.id, message.message.id, reply_markup=back_smm_markup)
+
+    else:
+        if get_account(order_data["id"])['quantity'] < quantity:
+            bot.edit_message_text(s.language['amount_error'], message.message.chat.id, message.message.id, reply_markup=back_shop_markup)
+            return
+        amount = order_data["amount"]
+        print(amount)
+
+        if _make_payment(str(message.from_user.id), amount):
+            add_order(order_data["user_id"], name, quantity, amount)
+            _send_accounts(order_data["id"], quantity, message.message.chat.id)
+            bot.edit_message_text(s.language['success_message'], message.message.chat.id, message.message.id, reply_markup=back_shop_markup)
+        else:
+            bot.edit_message_text(s.language['money_error'], message.message.chat.id, message.message.id, reply_markup=back_shop_markup)
+
+@bot.callback_query_handler(func=lambda c: c.data == s.language['back_to_crypto'])
+@bot.callback_query_handler(func=lambda c: c.data == s.language['balance'])
+def crypto_selecter(message):
+    bot.edit_message_text(s.language['select_currency'],message.message.chat.id, message.message.id, reply_markup=currency_markup)
+    if message.from_user.id in topup_process_users:
+        topup_process_users.remove(message.from_user.id)
+
+def update_account_info(new_info, folder):
+    with open(f'{folder}/info.json', 'rb') as f:
+        info_json = codecs.decode(f.read(), 'utf-8-sig', errors='ignore')
+    info_dict = json.loads(info_json)
+    if admin_regime == 'edit_price':
+        info_dict['price'] = new_info
+    elif admin_regime == 'edit_name':
+        info_dict['name'] = new_info
+    with open(f'{folder}/info.json', 'w') as f:
+        info_json = json.dumps(info_dict)
+        f.write(info_json)
+
+def _get_service(id: str):
+    with open('saved_smm.json') as f:
+        saved_smm_json = f.read()
+    saved_smm_dict = json.loads(saved_smm_json)
+    for category in saved_smm_dict.keys():
+        for service in saved_smm_dict[category]:
+            if service["service"] == id:
+                service_output = service
+                sdata = r.get('https://db-laren.com/en/services')
+                sdata = sdata.text
+                soup = BeautifulSoup(sdata, features="html.parser")
+                for each_div in soup.findAll('div',{'class':'d-none'}):
+                    if each_div["id"] == f'service-description-id-31-{id}':
+                        service_output["description"] = str(each_div.contents).replace('<br/>', '\n')
+                        service_output["description"] = service_output["description"].replace('\\n', '').replace(',', '').replace('[', '').replace(']', '').replace("'", "")
+                        service_output["description"] = service_output["description"].replace("                               ", "")
+                        return service_output
+    service_output["description"] = None
+    return service_output
+
+def _send_accounts(id, amount, chat_id, admin=False):
+    if not admin:
+        _add_stats(orders=True)
+    account = get_account(id)
+    order_id = random.randint(10000, 99999)
+    counter = 0
+    with ZipFile(f'{order_id}.zip', 'w') as f:
+        for filename in os.listdir(account['folder']):
+            if filename != 'info.json' and counter < amount:
+                f.write(f'{account["folder"]}/{filename}', arcname=f'/{filename}')
+                counter += 1
+            elif counter >= amount:
+                break
+    counter = 0
+    for filename in os.listdir(account['folder']):
+        if filename != 'info.json' and counter < amount:
+            if os.path.isdir(f'{account["folder"]}/{filename}'):
+                shutil.rmtree(f'{account["folder"]}/{filename}')
+            else:
+                os.remove(f'{account["folder"]}/{filename}')
+            counter += 1
+        elif counter >= amount:
+            break
+
+    with open(f'{order_id}.zip', 'rb') as f:
+        bot.send_document(chat_id, f)
+
+while True:
+    try:
+        bot.polling()
+    except Exception as exception:
+        print(f'Error occured: {traceback.format_exc()}')
+# See PyCharm help at https://www.jetbrains.com/help/pycharm/

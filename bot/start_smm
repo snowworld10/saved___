@@ -1,0 +1,18 @@
+#!/bin/bash
+
+cd /home/ubuntu/6539924929:AAGWCWT9vbuOEwy2XLoRhAyyAj1eG3NYWgQ
+python main.py &
+python checker.py &
+sleep 10
+cd /home/ubuntu/6680457772:AAGdOo7Kl25zZw6WYB8LMsxpfOOT0iNv6wc
+python main.py &
+python checker.py &
+sleep 10
+cd /home/ubuntu/6711674564:AAHR-bFMKUeOGmvcM7PpUZP3sfUKf3QUYpE
+python main.py &
+python checker.py &
+sleep 10
+cd /home/ubuntu/6559249759:AAFfPRxbxS3dVFif29kKl0x1whLuMOc7lVQ
+python main.py &
+python checker.py &
+sleep 10

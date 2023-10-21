@@ -1,0 +1,145 @@
+import datetime
+import multiprocessing
+import shutil
+from telethon.tl.types import ChannelParticipant
+
+from opentele.td import TDesktop
+from opentele.api import API, UseCurrentSession
+import asyncio
+import time
+import os
+
+async def main(tdata_folder, channel_username, interval, channel_limit):
+        # Load TDesktop client from tdata folder
+    tdataFolder = fr"/home/ubuntu/notifications_bot/accounts_base/{tdata_folder}/tdata"
+    print(tdataFolder)
+    try:
+        tdesk = TDesktop(tdataFolder)
+
+        # Using official iOS API with randomly generated device info
+        # print(api) to see more
+        api = API.TelegramAndroid
+
+        # Convert TDesktop session to telethon client
+        # CreateNewSession flag will use the current existing session to
+        # authorize the new client by `Login via QR code`.
+        client = await tdesk.ToTelethon(flag=UseCurrentSession, api=api, password='112233')
+        await client.connect()
+        await client.get_entity('https://t.me/Snowworld2004')
+    except Exception as exc:
+       print(exc.args) 
+       if os.path.exists(f'/home/ubuntu/notifications_bot/accounts_base/{tdata_folder}'):        
+            shutil.rmtree(f'/home/ubuntu/notifications_bot/accounts_base/{tdata_folder}')
+       return None
+
+    final_output = await get_users(client, channel_username, interval, channel_limit)
+
+    if final_output == 'get_messages required':
+        final_output = await get_messages(client, channel_username, interval)
+
+    return final_output
+
+async def get_messages(client, url, interval):
+
+    result = []
+
+    time.sleep(0.1)
+
+    messages = await client.get_messages(url, limit=20000, offset_date=datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(days=interval),reverse=True)
+
+    result = set([])
+
+    for message in messages:
+        try:
+            if message.sender.username:
+                result.add(message.sender.username)
+        except AttributeError:
+            pass
+
+    return list(result)
+
+async def get_users(client, channel_username, interval, channel_limit):
+    if not await _check_channel(client, channel_username, channel_limit):
+        print('channel is under filder returning []')
+        return []
+
+    result = set([])
+
+    for letter in 'abcde':
+        try:
+            for user in await client.get_participants(channel_username, search=letter):
+                if type(user.participant) is ChannelParticipant and user.username and _check_date(user, interval):
+                    result.add(user.username)
+        except Exception as exc:
+            return 'get_messages required'
+
+    final_output = list(result)
+
+    return final_output
+
+def entry_point(links, conn_send, tdata_folder, interval, channel_limit, not_completed_queue):
+    result = []
+    not_completed = 0
+
+    for link in links:
+        result_part = asyncio.run(main(tdata_folder, link, interval, channel_limit))
+        if result_part is None:
+            result = None
+            break
+        elif not result_part:
+            not_completed += 1
+            print(not_completed)
+        else:
+            [result.append(user) for user in result_part]
+
+    conn_send.put(result)
+    not_completed_queue.put(not_completed)
+
+def _check_date(user=None, message=None, interval=None):
+
+    if user:
+        try:
+            second_point = user.status.was_online
+        except AttributeError:
+            return False
+    else:
+        second_point = message.date
+
+    first_point = datetime.datetime.now(second_point.tzinfo) - datetime.timedelta(days=interval)
+
+    if second_point > first_point:
+        return True
+    else:
+        print(second_point)
+        return  False
+
+async def _check_channel(client, url, channel_limited):
+    # 10 attempts to establish connection with api.telegram. If after 10 attempts it still raises error,
+    # then there are connection problems or channel does not exist
+
+    for _ in range(10):
+        time.sleep(0.5)
+        try:
+            channel = await client.get_entity(f'{url}')
+            participants_count = channel.participants_count
+      
+
+
+
+
+
+
+
+
+
+
+            if channel_limited and participants_count > 100000:
+                print('channel is under filter')
+                return False
+            else:
+                return True
+        except Exception as exc:
+            print(exc.args)
+
+
+    return False

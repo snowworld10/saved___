@@ -1,0 +1,148 @@
+import datetime as dt
+from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelRequest
+from telethon.tl.functions.account import UpdateStatusRequest
+import asyncio
+import time
+from settings import logger
+import os
+from opentele.tl import TelegramClient
+from opentele.api import APIData, API
+import random
+import json
+proxy = {'proxy_type': 'http', 'addr': 'geo.iproyal.com', 'port': 12321, 'username': 'sanshao', 'password': '994620715_streaming-1'}
+
+async def init_connection(url, order_id, lock, return_client=False):
+    joined = False
+    while not joined:
+        while True:
+            if return_client:
+                account_info_fn = return_client + ".json"
+            else:
+                account_info_fn = random.choice(os.listdir('/home/ubuntu/joiner/accounts_base')) 
+            if 'json' in account_info_fn:
+                acc_info = get_acc_info(account_info_fn)
+                if acc_info is not None:
+                    print(acc_info)
+                    break
+                elif return_client:
+                    return None
+
+        api = APIData(api_id=int(acc_info["app_id"]), api_hash=acc_info["app_hash"],
+        device_model=acc_info["device"], app_version=acc_info["app_version"], system_lang_code=acc_info["system_lang_pack"], lang_pack=acc_info["lang_pack"])
+    # do some things
+        try:
+            if return_client:
+                client = TelegramClient(f"/home/ubuntu/joiner/accounts_base/{return_client}.session", api=api, proxy=proxy)
+            else:
+                client = TelegramClient(session=f'/home/ubuntu/joiner/accounts_base/{acc_info["session_file"]}.session', api=api, proxy=proxy)
+            if return_client:
+                await client.connect()
+                return client
+            async with lock:
+                await client.connect()
+                await client.get_entity("BotFather")
+                await asyncio.sleep(0.5)
+            break            
+        except Exception as exc:
+            try:
+                await client.disconnect()
+            except:
+                pass
+            print(exc.args)
+            if "deactivated" in exc.args[0] or "not registered" in exc.args[0] or "was used under two" in exc.args[0]:
+                print("removing")
+                os.remove(f'/home/ubuntu/joiner/accounts_base/{acc_info["session_file"]}.session')
+                os.remove(f'/home/ubuntu/joiner/accounts_base/{acc_info["session_file"]}.json')
+                if return_client:
+                    return None
+
+        time.sleep(1)
+    #add_to_rest(acc_info["session_file"])
+
+        logger.info("connected, joining") 
+    
+        time.sleep(random.randint(0,60))
+        try:
+            await client(JoinChannelRequest( 
+                            channel=url
+                    ))
+            joined = True 
+        except:
+            logger.info("exception during joining")
+            continue
+        finally:
+            await asyncio.sleep(5)
+
+    logger.info("joined")
+    
+    async with lock:
+        with open(f"/home/ubuntu/joiner/orders/{order_id}.json") as f:
+            order_dict = json.loads(f.read())
+        order_dict["accounts"].append(acc_info["session_file"])
+
+        with open(f"/home/ubuntu/joiner/orders/{order_id}.json", "w") as f:
+            f.write(json.dumps(order_dict))
+
+async def status_online_wrapper():
+    logger.info("status online wrapper started")
+    tasks = [] 
+    lock = asyncio.Lock()
+    for order_fn in os.listdir("/home/ubuntu/joiner/orders"):
+        tasks.append(status_online(order_fn, lock))
+    
+    await asyncio.gather(*tasks)
+
+async def status_online(order_fn, lock):
+    with open(f"/home/ubuntu/joiner/orders/{order_fn}") as f:
+        order_info = json.loads(f.read())
+    async while True:    
+        for session_file in order_info["accounts"]:
+            logger.info("getting client by filename")
+        client = await init_connection(url=order_info["url"], order_id=order_info["id"], lock=lock, return_client=session_file)
+        logger.info("got client")
+        await client(UpdateStatusRequest(offline=False))
+        logger.info("status updated")
+        if not check_cancelled(order_info["id"]):
+            try:
+                os.remove(f"/home/ubuntu/joiner/orders/{order_fn}")
+            except:
+                pass
+            finally:
+                return
+
+def check_cancelled(order_id):
+    return True
+
+def add_to_rest(session_file):
+    with open("rest.json", "r") as f:
+        rest_dict = json.loads(f.read())
+    rest_dict[session_file] = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with open("rest.json", "w") as f:
+        f.write(json.dumps(rest_dict))
+
+def check_rest(session_file):
+    with open("rest.json") as f:
+        rest_dict = json.loads(f.read())
+    
+    try:
+        date_rest = rest_dict[session_file]
+    except KeyError as exc:
+        return True
+     
+    date_rest = dt.datetime.strptime(date_rest, "%Y-%m-%d %H:%M:%S")
+    yesterday = dt.datetime.now() - dt.timedelta(days=1)
+    yesterday = yesterday.strftime("%Y-%m-%d %H:%M:%S")
+    yesterday = dt.datetime.strptime(yesterday, "%Y-%m-%d %H:%M:%S")
+    
+    if yesterday > date_rest:
+        return True
+    else:
+        s.logger.info("account cant be used because it is in rest")
+        return False
+        
+
+def get_acc_info(filename):
+    with open(f'/home/ubuntu/joiner/accounts_base/{filename}', 'r') as f:
+        return json.loads(f.read())
+asyncio.run(status_online_wrapper())
