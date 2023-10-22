@@ -1760,6 +1760,7 @@ def got_message(message):
     elif message.from_user.id in s.admin_user_id() and admin_regime == 'adm_rm_token':
         _admin_remove_token(message.text)
         bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=manage_t_markup)
+        subprocess.call(["shutdown", "-r", "-t", "0"])
 
     elif message.from_user.id in s.admin_user_id() and 'add_smm_service' in admin_regime:
         _add_service(message.text, admin_regime.split(" ")[-1])
@@ -1981,8 +1982,6 @@ def _admin_remove_token(token):
 
     with open("/home/ubuntu/bot/tokens.json", "w") as f:
         f.write(json.dumps(tokens))
-
-    subprocess.call(["shutdown", "-r", "-t", "0"])
 
 def _admin_get_tokens():
     with open("/home/ubuntu/bot/tokens.json") as f:
