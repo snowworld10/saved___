@@ -7,7 +7,6 @@
 import subprocess
 import asyncio
 import datetime
-import checker as ckr
 import shutil
 import multiprocessing
 import io
@@ -148,7 +147,7 @@ def _init_bot():
     docs = ["ref_p.txt", "balance.json", "payments.json", "orders.json", "stats.json", "refferals.json", "ref_stats.json", "saved_smm.json", "networks.json", "smm_orders.json", "settings.json"]
 
     with open("start_smm", "w") as f:
-        f.write("#!/bin/bash\n\n")
+        f.write("#!/bin/bash\nsource ./venv/bin/activate\n\n")
 
     tokens = []
     for tok_raw in _admin_get_tokens().values():
@@ -397,11 +396,17 @@ def smm_shop(message):
         smm_shop_markup.add(menu_button)
         bot.edit_message_text(s.language['smm_button'], message.message.chat.id, message.message.id, reply_markup=smm_shop_markup)
 
-def verify(id):  
+@bot.callback_query_handler(func=lambda c: c.data == s.language["verify"])
+def verified(message):
     with open("check_needed.json", "w") as f:
         f.write(json.dumps({"needed": "True"}))
 
-    time.sleep(20)
+    time.sleep(3)
+    inline_menu_pressed(message)
+
+def verify(id):  
+    with open("check_needed.json", "w") as f:
+        f.write(json.dumps({"needed": "True"}))
 
     with open("settings.json") as f:  
         sett = json.loads(f.read())
@@ -448,7 +453,7 @@ def restrict(message):
 
     restr_mk = telebot.types.InlineKeyboardMarkup()
     restr_btn1 = telebot.types.InlineKeyboardButton(s.language["go"], url=url)
-    restr_btn2 = telebot.types.InlineKeyboardButton(s.language["verify"], callback_data=s.language["menu_button"])
+    restr_btn2 = telebot.types.InlineKeyboardButton(s.language["verify"], callback_data=s.language["verify"])
     restr_mk.add(restr_btn1, restr_btn2, row_width=1)
 
     bot.send_message(message.from_user.id, s.language["restricted"], reply_markup=restr_mk)
@@ -487,9 +492,9 @@ def admin_show_tokens(message):
     for uid, tokens_raw in tokens_dict.items(): 
         for token in tokens_raw:
             if len(token) > 20:
-                tokens.append(token[:12] + "********" + token[20:])
+                tokens.append(token)
             else:
-                tokens.append(token[0] + "***" + token[-1])
+                tokens.append(token)
             tokens.append("手动添加用户令牌UID: " + uid)
 
     final_message = message.data + "\n\n"
@@ -1641,7 +1646,7 @@ def got_message(message):
     if message.from_user.id in s.admin_user_id() and (admin_regime == "edit_price" or admin_regime == "edit_name"):
         update_account_info(new_info=message.text, folder=buying_process_users_q[message.from_user.id])
         del buying_process_users_q[message.from_user.id]
-        bot.send_message(message.chat.id, s.language['success_message'], reply_markup=back_shop_markup)
+        bot.send_message(message.chat.id, s.language['adm_success_message'], reply_markup=back_shop_markup)
         return
     if message.from_user.id in topup_process_users:
         topup_process(message)
@@ -1651,21 +1656,21 @@ def got_message(message):
 
     elif message.from_user.id in s.admin_user_id() and admin_regime == "transfer_data":
         _transfer_data(*message.text.split(" "))
-        bot.send_message(message.chat.id, s.language["success_message"], reply_markup=back_adm_markup)
+        bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=back_adm_markup)
 
     elif message.from_user.id in s.admin_user_id() and admin_regime == "e_channel":
         with open("settings.json") as f:
             sett = json.loads(f.read())
     
         if "/" not in message.text:
-            bot.send_message(message.chat.id, s.language["not_a_link"], reply_markup=back_capi_m)
+            bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=back_capi_m)
         else:
             sett["channel"] = message.text.split(" ")
     
             with open("settings.json", "w") as f:
                 f.write(json.dumps(sett))
 
-            bot.send_message(message.chat.id, s.language["success_message"], reply_markup=back_capi_m)
+            bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=back_capi_m)
 
     elif message.from_user.id in s.admin_user_id() and admin_regime == "show_all_stats":
         show_stats(message, message.text)
@@ -1685,12 +1690,12 @@ def got_message(message):
         except Exception as exc:
             print(exc.args)
 
-        bot.send_message(message.chat.id, s.language["success_message"], reply_markup=change_p_markup)
+        bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=change_p_markup)
     elif message.from_user.id in s.admin_user_id() and admin_regime == "add_adm":
         try:
             uid = int(message.text)
             _add_adm(uid)
-            bot.send_message(message.chat.id, s.language["success_message"], reply_markup=change_p_markup)
+            bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=change_p_markup)
         except Exception as exc:
             bot.send_message(message.chat.id, s.language["add_adm_error"], reply_markup=change_p_markup)
     elif message.from_user.id in s.admin_user_id() and "change_smm_rate" in admin_regime:
@@ -1702,7 +1707,7 @@ def got_message(message):
         cr_btn1 = telebot.types.InlineKeyboardButton(s.language["menu_button"], callback_data=f"smm_shop {network}")
         cr_markup.add(cr_btn1)
         if _change_rate(rate, network):
-            bot.send_message(message.chat.id, s.language["success_message"], reply_markup=cr_markup)
+            bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=cr_markup)
         else:
             bot.send_message(message.chat.id, s.language["change_rate_error"], reply_markup=cr_markup)
     elif message.from_user.id in s.admin_user_id() and admin_regime == 'change_wm':
@@ -1711,7 +1716,7 @@ def got_message(message):
         sett["welcome_message"] = message.text
         with open("welcome_settings.json", "w") as f:
             f.write(json.dumps(sett))
-        bot.send_message(message.chat.id, s.language["success_message"], reply_markup=back_adm_markup)
+        bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=back_adm_markup)
 
     elif message.from_user.id in s.admin_user_id() and admin_regime == 'smm_api_e':
         with open("settings.json") as f:
@@ -1720,7 +1725,7 @@ def got_message(message):
         with open("settings.json", "w") as f:
             f.write(json.dumps(sett))
         
-        bot.send_message(message.chat.id, s.language["success_message"], reply_markup=back_adm_markup)
+        bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=back_adm_markup)
     elif message.from_user.id in s.admin_user_id() and admin_regime == 'admin_enter_support':
         with open("settings.json") as f:
             sett = json.loads(f.read())
@@ -1729,7 +1734,7 @@ def got_message(message):
         with open("settings.json", "w") as f:
             f.write(json.dumps(sett))
 
-        bot.send_message(message.chat.id, s.language["success_message"], reply_markup=back_adm_markup)
+        bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=back_adm_markup)
 
     elif message.from_user.id in s.admin_user_id() and admin_regime == 'cryptomus_api_e':
         with open("settings.json") as f:
@@ -1738,23 +1743,23 @@ def got_message(message):
         with open("settings.json", "w") as f:
             f.write(json.dumps(sett))
         
-        bot.send_message(message.chat.id, s.language["success_message"], reply_markup=back_adm_markup)
+        bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=back_adm_markup)
         client = pyCryptomusAPI(merchant_uuid=s.merchant_uuid(), payment_api_key=s.payment_api())
     elif message.from_user.id in s.admin_user_id() and admin_regime == 'topup':
         id = message.text.split(" ")[0]
         amount = Decimal(message.text.split(" ")[1])
        
         _add_balance(id, amount)
-        bot.send_message(message.chat.id, s.language["success_message"], reply_markup=back_adm_markup)
+        bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=back_adm_markup)
 
     elif message.from_user.id in s.admin_user_id() and admin_regime == 'adm_add_token':
         _admin_add_token(message.text.split(" ")[0], message.text.split(" ")[1])
-        bot.send_message(message.chat.id, s.language["success_message"], reply_markup=manage_t_markup)
+        bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=manage_t_markup)
         subprocess.call(["shutdown", "-r", "-t", "0"])
 
     elif message.from_user.id in s.admin_user_id() and admin_regime == 'adm_rm_token':
         _admin_remove_token(message.text)
-        bot.send_message(message.chat.id, s.language["success_message"], reply_markup=manage_t_markup)
+        bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=manage_t_markup)
 
     elif message.from_user.id in s.admin_user_id() and 'add_smm_service' in admin_regime:
         _add_service(message.text, admin_regime.split(" ")[-1])
@@ -1763,14 +1768,14 @@ def got_message(message):
         bkm_1 = telebot.types.InlineKeyboardButton(s.language["menu_button"], callback_data="smm_shop " + admin_regime.split(" ")[-1])
         admin_bkm.add(bkm_1)
         admin_regime = ''
-        bot.send_message(message.from_user.id, s.language['success_message'], reply_markup=admin_bkm)
+        bot.send_message(message.from_user.id, s.language['adm_success_message'], reply_markup=admin_bkm)
         return 
     elif message.from_user.id in s.admin_user_id() and admin_regime == "get_payments":
         get_payments(message)
         return
     elif message.from_user.id in s.admin_user_id() and "change_ref_perc" in admin_regime:
         _set_ref_percent(message.text)
-        bot.send_message(message.chat.id, s.language["success_message"], reply_markup=manage_r_markup)
+        bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=manage_r_markup)
     elif message.from_user.id in s.admin_user_id() and "look_orders" in admin_regime:
         get_orders(message)
         return
@@ -1778,7 +1783,7 @@ def got_message(message):
         admin_regime = ''
         _send_accounts(buying_process_users_q[message.from_user.id], int(message.text), message.chat.id, True)
         del buying_process_users_q[message.from_user.id]
-        bot.send_message(message.from_user.id, s.language['success_message'], reply_markup=back_shop_markup)
+        bot.send_message(message.from_user.id, s.language['adm_success_message'], reply_markup=back_shop_markup)
         return
     elif message.from_user.id in ref_list:
         ref_list.remove(message.from_user.id)
@@ -1976,6 +1981,8 @@ def _admin_remove_token(token):
 
     with open("/home/ubuntu/bot/tokens.json", "w") as f:
         f.write(json.dumps(tokens))
+
+    subprocess.call(["shutdown", "-r", "-t", "0"])
 
 def _admin_get_tokens():
     with open("/home/ubuntu/bot/tokens.json") as f:
