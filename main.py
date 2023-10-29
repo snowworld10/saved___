@@ -578,7 +578,7 @@ def enter_link_and_quantity(message):
   
     if service["description"] is None:
         _remove_saved_smm(message.data.split('smmselect ')[1], network)
-        start_command(message)
+        inline_menu_pressed(message)
         return
     else:
         rateusd = str((Decimal(service["rate"]) / Decimal("6.7")).quantize(Decimal("2.0000")))
