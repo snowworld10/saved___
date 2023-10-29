@@ -2141,6 +2141,7 @@ def _get_service(id: str):
 
     for category in saved_smm_dict.keys():
         for service in saved_smm_dict[category]:
+            print(service["service"], id)
             if service["service"] == id:
                 service_output = service
 
