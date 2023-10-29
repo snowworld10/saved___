@@ -1,4 +1,4 @@
-	# This is a sample Python script.
+# This is a sample Python script.
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
@@ -373,7 +373,7 @@ def smm_shop(message):
         services_available = services_available[found_c]
         for service in services_available:
             s_rate = Decimal(service["rate"]) / Decimal("6.7")
-            s_rate = s_rate.quantize(Decimal("2.00"))
+            s_rate = s_rate.quantize(Decimal("2.0000"))
   
             smm_shop_button = telebot.types.InlineKeyboardButton(text=f'${s_rate} {service["name"]}', callback_data=f'network {network} smmselect {service["service"]}')
             smm_shop_markup.add(smm_shop_button)
@@ -404,6 +404,53 @@ def verified(message):
     time.sleep(3)
     inline_menu_pressed(message)
 
+def refund_checker():
+    while True:
+        ref = []
+        with open("smm_orders.json") as f:
+            orders_dict = json.loads(f.read())
+
+        for userid, orders in orders_dict.items():
+            ind = -1
+            for order_id, order in orders.items():
+                ind += 1
+                print(f"getting order status {order_id}...")
+                res = _get_order_status(order_id)
+                print(res["status"] in [s.language["Partial"], s.language["Canceled"]], res["remains"], "refunded" in order.keys())
+
+                if "refunded" not in order.keys() and res["status"] in [s.language["Partial"], s.language["Canceled"]]:
+                    print("refunding...")
+                    if res["status"] == s.language["Partial"]:
+                        charge = Decimal(res["charge"]) / Decimal("6.7")
+                        charge = charge.quantize(Decimal("2.0000"))
+                        refund_am = Decimal(res["amount"]) - charge
+
+                        try:
+                            bot.send_message(int(userid), f"您的订单ID:{order_id}部分完成，部分退款已到账: {refund_am}$，订单问题请联系客服")
+                        except:
+                            traceback.print_exc()
+
+                    else:
+                        refund_am = Decimal(res["amount"])
+        
+                        try:
+                            bot.send_message(int(userid), f"您的订单ID:{order_id}已取消，退款已到账：{refund_am}$，订单问题请联系客服")
+                        except:
+                            traceback.print_exc()
+
+                    refund_am = refund_am.quantize(Decimal("2.0000"))
+                    _add_balance(userid, refund_am)
+                    ref = [userid, order_id]
+                 
+        if ref:
+            print("saving changes 1/2")
+            orders_dict[ref[0]][ref[1]]["refunded"] = True
+            
+            with open("smm_orders.json", "w") as f:
+                print("saving changes 2/2...")
+                f.write(json.dumps(orders_dict))
+        print("finished.")
+
 def verify(id):  
     with open("check_needed.json", "w") as f:
         f.write(json.dumps({"needed": "True"}))
@@ -427,9 +474,14 @@ def verify(id):
     return id in sett["allowed"]
 
 def change_token(old_tok, new):
+    try:
+        subprocess.run("rm -r /home/ubutu/{new}")
+    except Exception as exc:
+        pass
+
     os.rename(f"/home/ubuntu/{old_tok}", f"/home/ubuntu/{new}")
 
-    with open(f"/home/ubuntu/{old_tok}/cur_token.json","w") as f:
+    with open(f"/home/ubuntu/{new}/cur_token.json","w") as f:
         f.write(json.dumps({"token": new}))
 
     with open("/home/ubuntu/bot/tokens.json") as f:
@@ -441,11 +493,9 @@ def change_token(old_tok, new):
 
         tokens_dict[auid].remove(old_tok)
         tokens_dict[auid].append(new)
-        
+
     with open("/home/ubuntu/bot/tokens.json", "w") as f:
         f.write(json.dumps(tokens_dict))
-
-    subprocess.call(["shutdown", "-r", "-t", "0"])
 
 def restrict(message):
     with open("settings.json") as f:
@@ -531,7 +581,7 @@ def enter_link_and_quantity(message):
         start_command(message)
         return
     else:
-        rateusd = str((Decimal(service["rate"]) / Decimal("6.7")).quantize(Decimal("2.00")))
+        rateusd = str((Decimal(service["rate"]) / Decimal("6.7")).quantize(Decimal("2.0000")))
         final_message += f"*{service['service']}* - {service['name']}\n*单价: *${rateusd} = 每1000\n\n" + service["description"] + "\n\n" + f"*最小下单数量：*{service['min']}" + f"\n*最大下单数量：*{service['max']}" "\n\n" + s.language['enter_link_and_quality'][service['type']]    
         final_message = final_message.replace("_","")
 
@@ -557,7 +607,7 @@ def show_order_details(message):
     id = message.data.split(" ")[1]
     order = _get_order_status(id)
     charge = Decimal(order["charge"]) / Decimal("6.7")
-    charge = charge.quantize(Decimal("2.00"))
+    charge = charge.quantize(Decimal("2.0000"))
 
     final_message = f"ID: {id}\n费用: {charge} USDT\n日期: {order['date']}\n计数: {order['start_count']}\n状态: {order['status']}\n数量: {order['quantity']}\n剩余: {order['remains']}\n链接: {order['link']}"
     bo_markup = types.InlineKeyboardMarkup()
@@ -1137,7 +1187,7 @@ def _get_ref_percent():
         return f.read().split(" ")
 
 def _set_ref_percent(perc):
-    new_p = " ".join([str((Decimal(perc_pl) / Decimal("100")).quantize(Decimal("2.00"))) for perc_pl in perc.split(" ")])
+    new_p = " ".join([str((Decimal(perc_pl) / Decimal("100")).quantize(Decimal("2.0000"))) for perc_pl in perc.split(" ")])
     # perc_pl is percent per level
    
     with open("ref_p.txt", "w") as f:
@@ -1209,7 +1259,7 @@ def topup_process(message):
     add_payment(order_id=order_id, user_id=message.from_user.id, amount=message.text)
     currency = currency_dict[message.from_user.id]
     amount = message.text
-    amount = Decimal(amount).quantize(Decimal("2.00"))
+    amount = Decimal(amount).quantize(Decimal("2.0000"))
     topup_process_users.remove(message.from_user.id)
     if amount < Decimal("0.5"):
         bot.send_message(message.chat.id,s.language["min_topup_err"])
@@ -1355,6 +1405,10 @@ def _add_smm_order(user_id: str, id: str, data):
             res = r.get(f'https://db-laren.com/api/v2?key={s.smm_panel_api_token()}&action=add&service={id}&link={odata["link"]}&quantity={odata["quantity"]}')
         res = res.json()
         print(res)
+
+        if 'neworder.error.not_enough_funds' in res.values():
+            return False
+
         hids.append(str(res["order"]))
  
     quant = str(quant) 
@@ -1399,7 +1453,8 @@ def _get_order_status(id: str):
             fin_out["link"] = orders[id]["link"]
             fin_out["quantity"] = orders[id]["quantity"]
             fin_out["date"] = orders[id]["date"]
-
+            fin_out["amount"] = orders[id]["amount"]
+       
     fin_out["status"] = s.language[fin_out["status"]]
     return fin_out
 
@@ -1429,7 +1484,9 @@ def _add_service(id: str, network):
         return 
     with open('saved_smm.json') as f:
         saved_services_json = f.read()
+
     saved_services_dict = json.loads(saved_services_json)
+
     res = r.get(f'https://db-laren.com/api/v2?key={s.smm_panel_api_token()}&action=services')
     res = res.json()
     print(res)
@@ -1437,6 +1494,19 @@ def _add_service(id: str, network):
         if dict_with_service['service'] == id:
             dict_ws = dict_with_service
             dict_ws["resell"] = 1.00
+
+            sdata = r.get('https://db-laren.com/services')
+            sdata = sdata.text
+            soup = BeautifulSoup(sdata, features="html.parser")
+            for each_div in soup.findAll('div', {'class': 'd-none'}):
+                if each_div["id"] == f'service-description-id-31-{id}':
+                    dict_ws["description"] = str(each_div.contents).replace('<br/>', '\n')
+                    dict_ws["description"] = dict_ws["description"].replace('\\n', '').replace(',',
+                                                                                                             '').replace(
+                        '[', '').replace(']', '').replace("'", "")
+                    dict_ws["description"] = dict_ws["description"].replace(
+                        "                               ", "")
+
             if dict_with_service["category"] not in saved_services_dict.keys() or not saved_services_dict[dict_with_service["category"]]:
                 saved_services_dict[dict_with_service["category"]] = []
                 dict_ws["resell"] = 1.00
@@ -1459,6 +1529,7 @@ def _add_service(id: str, network):
         f.write(json.dumps(networks_dict))
 
 def _add_balance(user_id, amount):
+    print(amount)
     _add_stats(recharged=amount)
     with open('balance.json', 'r') as f:
         balances_json = f.read()
@@ -1496,7 +1567,7 @@ def _topup_process(charge, order_id, user_id, message):
                         ref_amount_s = amount * percent_s
                         ref_amount_t = amount * percent_t
 
-                        ref_amount.quantize(Decimal("2.00"))
+                        ref_amount.quantize(Decimal("2.0000"))
                                                 
                         with open("ref_stats.json") as f:
                             stats_dict = json.loads(f.read())
@@ -1506,7 +1577,7 @@ def _topup_process(charge, order_id, user_id, message):
                             # withdrawed_new = Decimal(withdrawed) + Decimal(ref_amount)
                             # withdrawed_new = withdrawed_new.quantize(Decimal("2.00"))
                              earned_new = Decimal(earned) + Decimal(ref_amount)
-                             earned_new = earned_new.quantize(Decimal("2.00"))
+                             earned_new = earned_new.quantize(Decimal("2.0000"))
                              stats_dict[ref_dict[str(user_id)]]["earned"] = str(earned_new)
                             # stats_dict[ref_dict[user_id]]["withdrawed"] = str(withdrawed_new)
 
@@ -1522,7 +1593,7 @@ def _topup_process(charge, order_id, user_id, message):
                             earned_s = stats_dict[uid_s]["earned"]
                             withdrawed_s = stats_dict[uid_s]["withdrawed"]
                             earned_new = Decimal(earned_s) + Decimal(ref_amount_s)
-                            earned_new = earned_new.quantize(Decimal("2.00"))
+                            earned_new = earned_new.quantize(Decimal("2.0000"))
                             stats_dict[uid_s]["earned"] = str(earned_new)
                         except KeyError as exc:
                             stats_dict[uid_s] = {"earned": str(ref_amount_s), "withdrawed": "0.00"}
@@ -1532,7 +1603,7 @@ def _topup_process(charge, order_id, user_id, message):
                         try:
                             earned_t = stats_dict[t_uid]["earned"]
                             earned_new = Decimal(earned_t) + Decimal(ref_amount_t)
-                            earned_new = earned_new.quantize(Decimal("2.00"))
+                            earned_new = earned_new.quantize(Decimal("2.0000"))
                             stats_dict[t_uid]["earned"] = str(earned_new)
                         except KeyError as exc:
                             stats_dict[t_uid] = {"earned": str(ref_amount_t), "withdrawed": "0.00"}
@@ -1653,6 +1724,8 @@ def got_message(message):
         return
     elif message.from_user.id in s.admin_user_id() and admin_regime == "migr":
         change_token(message.text.split(" ")[0], message.text.split(" ")[1])
+        bot.send_message(message.chat.id, s.language["adm_success_message"], reply_markup=back_adm_markup)
+        subprocess.call(["shutdown", "-r", "-t", "0"])
 
     elif message.from_user.id in s.admin_user_id() and admin_regime == "transfer_data":
         _transfer_data(*message.text.split(" "))
@@ -1808,6 +1881,7 @@ def confirmation_process(message, smm):
             msgt = message.text
             service_id = smm_buying_process[message.from_user.id]
             service = _get_service(service_id)
+            data_lst["network"] = service["network"]
             if "\n" not in message.text:
                 msgt += "\n"
             for msg in msgt.split("\n"):
@@ -1817,6 +1891,7 @@ def confirmation_process(message, smm):
 
                 data["service_id"] = service_id
                 type = service["type"]
+                data["type"] = type
                 if type == 'Poll':
                     if "|" in msg:
                         data["link"] = msg.split('|')[0]
@@ -1865,7 +1940,7 @@ def confirmation_process(message, smm):
 
                 rate = Decimal(service["rate"]) / Decimal("6.7")
                 rate = Decimal(rate) / Decimal("1000")
-                data["rate"] = rate.quantize(Decimal("2.00"))
+                data["rate"] = rate.quantize(Decimal("2.0000"))
                 
 
                 if data["quantity"] != None:
@@ -1887,7 +1962,7 @@ def confirmation_process(message, smm):
                 else:
                     amount = Decimal(rate) * Decimal(data["max"])
                 amount = Decimal(amount) * Decimal(service["resell"])
-                data["amount"] = round(amount, 2)
+                data["amount"] = round(amount, 4)
                 data_lst["amount"] = Decimal(data_lst["amount"]) + Decimal(data["amount"])
                 data["name"] = service["name"]
                 data_lst["odata"].append(data)
@@ -1897,7 +1972,7 @@ def confirmation_process(message, smm):
             else:
                 data_lst["quantity"] = str(data_lst["quantity"])
 
-            final_message += f'*服务:* {data["name"]}\n\n*单价:*  {round(Decimal(service["rate"]) / Decimal("6.7"),2)} $ = 每 (1000)\n\n'
+            final_message += f'*服务:* {data["name"]}\n\n*单价:*  {round(Decimal(service["rate"]) / Decimal("6.7"),4)} $ = 每 (1000)\n\n'
             menu_btn = types.InlineKeyboardButton(s.language['back_to_shop'], callback_data=s.language["smm_button"])
         else:
             data["id"] = buying_process_users_q[message.from_user.id]
@@ -1909,11 +1984,11 @@ def confirmation_process(message, smm):
             del buying_process_users_q[message.from_user.id]
             data["rate"] = Decimal(get_account(data["id"])['price'])
             amount = Decimal(data["rate"]) * Decimal(data["quantity"])
-            data["amount"] = amount.quantize(Decimal("2.00"))
+            data["amount"] = amount.quantize(Decimal("2.0000"))
             final_message += f'金 额:  {data["rate"]} $\n\n'
             menu_btn = types.InlineKeyboardButton(s.language['back_to_shop'], callback_data=s.language["shop_button"])
 
-        data_lst["amount"] = str(data_lst["amount"].quantize(Decimal("2.00")))             
+        data_lst["amount"] = str(data_lst["amount"].quantize(Decimal("2.0000")))             
         final_message += f'*费用:*  {data_lst["amount"]} $\n\n*余额:*  {get_balance(message.from_user.id)}'
         confirmation_markup = types.InlineKeyboardMarkup()
         confirmation_btn = types.InlineKeyboardButton(s.language['confirm_button'], callback_data=f'order {data_lst["id"]}')
@@ -1993,15 +2068,25 @@ def buying_process(message):
     order_id = message.data.split(" ")[-1]
     order_data = waiting_order[order_id].get(timeout=5)
     name = order_data["odata"][0]["name"]
+
+    bsm = telebot.types.InlineKeyboardMarkup()
+
     rate = Decimal(order_data["odata"][0]["rate"])
 
     if order_data["odata"][0]["smm"]:
         service_id = order_data["odata"][0]["service_id"]
+        network = order_data["network"]
+
         amount = order_data["amount"]
         print(amount)
+        bsm_btn1 = telebot.types.InlineKeyboardButton(s.language["menu_button"], callback_data=f"network {network} smmselect {service_id}")
+        bsm.add(bsm_btn1)
 
         if _make_payment(str(message.from_user.id), amount):
-            hid = _add_smm_order(str(message.from_user.id), service_id, order_data)
+            if not _add_smm_order(str(message.from_user.id), service_id, order_data):
+                bot.send_message(message.from_user.id, s.language["internal_money_error"], parse_mode='Markdown', reply_markup=bsm)
+                return
+
             if "_" in order_data["odata"][0]["link"]:
                 final_message = f"您的订单已收到\n\nID: {hid}\n服务: {order_data['odata'][0]['name']}\n链接: {order_data['odata'][0]['link']}...\n数量: {order_data['quantity']}\n费用: {order_data['amount']}$\n"   
                 bot.edit_message_text(final_message, message.message.chat.id, message.message.id, reply_markup=back_smm_markup)
@@ -2053,6 +2138,7 @@ def _get_service(id: str):
     with open('saved_smm.json') as f:
         saved_smm_json = f.read()
     saved_smm_dict = json.loads(saved_smm_json)
+
     for category in saved_smm_dict.keys():
         for service in saved_smm_dict[category]:
             if service["service"] == id:
@@ -2065,16 +2151,8 @@ def _get_service(id: str):
                         if str(service_output["service"]) == str(service):
                             service_output["network"] = net
 
-                sdata = r.get('https://db-laren.com/services')
-                sdata = sdata.text
-                soup = BeautifulSoup(sdata, features="html.parser")
-                for each_div in soup.findAll('div',{'class':'d-none'}):
-                    if each_div["id"] == f'service-description-id-31-{id}':
-                        service_output["description"] = str(each_div.contents).replace('<br/>', '\n')
-                        service_output["description"] = service_output["description"].replace('\\n', '').replace(',', '').replace('[', '').replace(']', '').replace("'", "")
-                        service_output["description"] = service_output["description"].replace("                               ", "")
-                        return service_output
-    service_output["description"] = None
+    if "description" not in service_output.keys():
+        service_output["description"] = None
 
     return service_output
 
@@ -2113,6 +2191,9 @@ except Exception as exc:
     print(f'Error occured: {traceback.format_exc()}')
 
 print("started polling")
+
+trd = Thread(target=refund_checker)
+trd.start()
 
 while True:
     try:
