@@ -1,4 +1,4 @@
-# This is a sample Python script.
+ # This is a sample Python script.
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
@@ -372,8 +372,7 @@ def smm_shop(message):
 
         services_available = services_available[found_c]
         for service in services_available:
-            s_rate = Decimal(service["rate"]) / Decimal("6.7")
-            s_rate = s_rate.quantize(Decimal("2.0000"))
+            s_rate = Decimal(service["rate"])
   
             smm_shop_button = telebot.types.InlineKeyboardButton(text=f'${s_rate} {service["name"]}', callback_data=f'network {network} smmselect {service["service"]}')
             smm_shop_markup.add(smm_shop_button)
@@ -421,8 +420,7 @@ def refund_checker():
                 if "refunded" not in order.keys() and res["status"] in [s.language["Partial"], s.language["Canceled"]]:
                     print("refunding...")
                     if res["status"] == s.language["Partial"]:
-                        charge = Decimal(res["charge"]) / Decimal("6.7")
-                        charge = charge.quantize(Decimal("2.0000"))
+                        charge = Decimal(res["charge"])
                         refund_am = Decimal(res["amount"]) - charge
 
                         try:
@@ -451,7 +449,26 @@ def refund_checker():
                 f.write(json.dumps(orders_dict))
         print("finished.")
 
-def verify(id):  
+        with open("saved_smm.json") as f:
+            saved_services_dict = json.loads(f.read())
+
+        saved_services_new = saved_services_dict
+        for network, services in saved_services_dict.items():
+            index = -1
+            for service in services:
+                index += 1
+
+                res = r.get(f'https://db-laren.com/api/v2?key={s.smm_panel_api_token()}&action=services')
+                res = res.json()
+                print(res)
+                for dict_with_service in res:
+                    if dict_with_service['service'] == service["service"]:
+                        saved_services_new[network][index]["rate"] = str(Decimal(dict_with_service["rate"]) * Decimal(service["resell"]))
+
+        with open("saved_smm.json", "w") as f:
+            f.write(json.dumps(saved_services_new))
+
+def verify(id):
     with open("check_needed.json", "w") as f:
         f.write(json.dumps({"needed": "True"}))
 
@@ -581,7 +598,7 @@ def enter_link_and_quantity(message):
         inline_menu_pressed(message)
         return
     else:
-        rateusd = str((Decimal(service["rate"]) / Decimal("6.7")).quantize(Decimal("2.0000")))
+        rateusd = Decimal(service["rate"])
         final_message += f"*{service['service']}* - {service['name']}\n*单价: *${rateusd} = 每1000\n\n" + service["description"] + "\n\n" + f"*最小下单数量：*{service['min']}" + f"\n*最大下单数量：*{service['max']}" "\n\n" + s.language['enter_link_and_quality'][service['type']]    
         final_message = final_message.replace("_","")
 
@@ -606,8 +623,7 @@ def admin_look_orders(message):
 def show_order_details(message):
     id = message.data.split(" ")[1]
     order = _get_order_status(id)
-    charge = Decimal(order["charge"]) / Decimal("6.7")
-    charge = charge.quantize(Decimal("2.0000"))
+    charge = Decimal(order["charge"])
 
     final_message = f"ID: {id}\n费用: {charge} USDT\n日期: {order['date']}\n计数: {order['start_count']}\n状态: {order['status']}\n数量: {order['quantity']}\n剩余: {order['remains']}\n链接: {order['link']}"
     bo_markup = types.InlineKeyboardMarkup()
@@ -1836,13 +1852,13 @@ def got_message(message):
         subprocess.call(["shutdown", "-r", "-t", "0"])
 
     elif message.from_user.id in s.admin_user_id() and 'add_smm_service' in admin_regime:
-        _add_service(message.text, admin_regime.split(" ")[-1])
-
+        
         admin_bkm = telebot.types.InlineKeyboardMarkup()
         bkm_1 = telebot.types.InlineKeyboardButton(s.language["menu_button"], callback_data="smm_shop " + admin_regime.split(" ")[-1])
         admin_bkm.add(bkm_1)
         admin_regime = ''
         bot.send_message(message.from_user.id, s.language['adm_success_message'], reply_markup=admin_bkm)
+        _add_service(message.text, admin_regime.split(" ")[-1])
         return 
     elif message.from_user.id in s.admin_user_id() and admin_regime == "get_payments":
         get_payments(message)
@@ -1938,7 +1954,7 @@ def confirmation_process(message, smm):
                         data["cust_comments"] = msg.split(" ")[1]
                     data["quantity"] = len(data["cust_comments"].split(","))
 
-                rate = Decimal(service["rate"]) / Decimal("6.7")
+                rate = Decimal(service["rate"])
                 rate = Decimal(rate) / Decimal("1000")
                 data["rate"] = rate.quantize(Decimal("2.0000"))
                 
@@ -1972,7 +1988,7 @@ def confirmation_process(message, smm):
             else:
                 data_lst["quantity"] = str(data_lst["quantity"])
 
-            final_message += f'*服务:* {data["name"]}\n\n*单价:*  {round(Decimal(service["rate"]) / Decimal("6.7"),4)} $ = 每 (1000)\n\n'
+            final_message += f'*服务:* {data["name"]}\n\n*单价:*  {round(Decimal(service["rate"]),4)} $ = 每 (1000)\n\n'
             menu_btn = types.InlineKeyboardButton(s.language['back_to_shop'], callback_data=s.language["smm_button"])
         else:
             data["id"] = buying_process_users_q[message.from_user.id]
@@ -2083,8 +2099,10 @@ def buying_process(message):
         bsm.add(bsm_btn1)
 
         if _make_payment(str(message.from_user.id), amount):
-            if not _add_smm_order(str(message.from_user.id), service_id, order_data):
+            hid = _add_smm_order(str(message.from_user.id), service_id, order_data)
+            if not hid:
                 bot.send_message(message.from_user.id, s.language["internal_money_error"], parse_mode='Markdown', reply_markup=bsm)
+                _add_balance(str(message.from_user.id), Decimal(amount))
                 return
 
             if "_" in order_data["odata"][0]["link"]:
